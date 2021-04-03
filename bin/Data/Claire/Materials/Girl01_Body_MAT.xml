@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<material>
+	<technique name="Techniques/DiffNormalSpec.xml" />
+	<texture unit="diffuse" name="Claire/Textures/Girl01_diffuse.jpg" />
+	<texture unit="normal" name="Claire/Textures/Girl01_normal.jpg" />
+	<texture unit="specular" name="Claire/Textures/Girl01_spec.jpg" />
+	<parameter name="MatDiffColor" value="1 1 1 1" />
+	<parameter name="MatSpecColor" value="0.5 0.5 0.5 7.57724" />
+	<parameter name="MatEmissiveColor" value="0 0 0 1" />
+</material>
