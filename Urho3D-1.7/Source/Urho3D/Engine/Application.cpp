@@ -58,6 +58,12 @@ Application::Application(Context* context) :
 
     // Subscribe to log messages so that can show errors if ErrorExit() is called with empty message
     SubscribeToEvent(E_LOGMESSAGE, URHO3D_HANDLER(Application, HandleLogMessage));
+    
+    AllocConsole();
+	AttachConsole(GetCurrentProcessId());
+	freopen("CON", "w", stdout);
+	freopen("CON", "w", stderr);
+	SetConsoleTitle("Debug console");
 }
 
 int Application::Run()
