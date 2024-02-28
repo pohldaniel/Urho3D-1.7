@@ -993,7 +993,7 @@ void RigidBody::AddBodyToWorld()
         // Check if this node contains Constraint components that were waiting for the rigid body to be created, and signal them
         // to create themselves now
         PODVector<Constraint*> constraints;
-        node_->GetComponents<Constraint>(constraints);
+        node_->GetDerivedComponents<Constraint>(constraints);
         for (PODVector<Constraint*>::Iterator i = constraints.Begin(); i != constraints.End(); ++i)
             (*i)->CreateConstraint();
     }

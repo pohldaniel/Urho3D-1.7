@@ -31,12 +31,12 @@
 #include "../Math/Ray.h"
 #include "../Physics/CollisionShape.h"
 #include "../Physics/Constraint.h"
+#include "../Physics/Constraint6DoF.h"
 #include "../Physics/PhysicsEvents.h"
 #include "../Physics/PhysicsUtils.h"
 #include "../Physics/PhysicsWorld.h"
 #include "../Physics/RaycastVehicle.h"
 #include "../Physics/RigidBody.h"
-#include "../Physics/SoftBody.h"
 #include "../Scene/Scene.h"
 #include "../Scene/SceneEvents.h"
 
@@ -47,8 +47,6 @@
 #include <Bullet/BulletCollision/CollisionShapes/btSphereShape.h>
 #include <Bullet/BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h>
 #include <Bullet/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h>
-#include <Bullet/BulletSoftBody/btSoftBodyRigidBodyCollisionConfiguration.h>
-#include <BulletCollision/CollisionDispatch/btGhostObject.h>
 
 extern ContactAddedCallback gContactAddedCallback;
 
@@ -121,7 +119,7 @@ struct PhysicsQueryCallback : public btCollisionWorld::ContactResultCallback
 };
 
 
-PhysicsWorld::PhysicsWorld(Context* context, bool softbodyWorld) :
+PhysicsWorld::PhysicsWorld(Context* context) :
     Component(context),
     collisionConfiguration_(0),
     fps_(DEFAULT_FPS),
@@ -134,10 +132,7 @@ PhysicsWorld::PhysicsWorld(Context* context, bool softbodyWorld) :
     applyingTransforms_(false),
     simulating_(false),
     debugRenderer_(0),
-    ghostPairCallback(0),
-    debugMode_(btIDebugDraw::DBG_DrawWireframe | btIDebugDraw::DBG_DrawConstraints | btIDebugDraw::DBG_DrawConstraintLimits),
-	useSoftBodyWorld_(softbodyWorld),
-    softBodyWorldInfo_(0)
+    debugMode_(btIDebugDraw::DBG_DrawWireframe | btIDebugDraw::DBG_DrawConstraints | btIDebugDraw::DBG_DrawConstraintLimits)
 {
     gContactAddedCallback = CustomMaterialCombinerCallback;
 
@@ -158,10 +153,6 @@ PhysicsWorld::PhysicsWorld(Context* context, bool softbodyWorld) :
     world_->setInternalTickCallback(InternalPreTickCallback, static_cast<void*>(this), true);
     world_->setInternalTickCallback(InternalTickCallback, static_cast<void*>(this), false);
     world_->setSynchronizeAllMotionStates(true);
-
-    // Add ghost pair callback
-    ghostPairCallback = new btGhostPairCallback();
-    world_->getBroadphase()->getOverlappingPairCache()->setInternalGhostPairCallback(ghostPairCallback);
 }
 
 
@@ -178,13 +169,6 @@ PhysicsWorld::~PhysicsWorld()
 
         for (PODVector<CollisionShape*>::Iterator i = collisionShapes_.Begin(); i != collisionShapes_.End(); ++i)
             (*i)->ReleaseShape();
-		
-		 // sparsesdf must be reset before removing softbodies
-        if (softBodyWorldInfo_)
-            softBodyWorldInfo_->m_sparsesdf.Reset();
-
-        for (PODVector<SoftBody*>::Iterator i = softBodies_.Begin(); i != softBodies_.End(); ++i)
-            (*i)->ReleaseBody();
     }
 
     world_.Reset();
@@ -196,13 +180,6 @@ PhysicsWorld::~PhysicsWorld()
     if (!PhysicsWorld::config.collisionConfig_)
         delete collisionConfiguration_;
     collisionConfiguration_ = 0;
-
-    // Delete GhostPair callback
-    if (ghostPairCallback)
-    {
-        delete ghostPairCallback;
-        ghostPairCallback = 0;
-    }
 }
 
 void PhysicsWorld::RegisterObject(Context* context)
@@ -217,67 +194,6 @@ void PhysicsWorld::RegisterObject(Context* context)
     URHO3D_ATTRIBUTE("Interpolation", bool, interpolation_, true, AM_FILE);
     URHO3D_ATTRIBUTE("Internal Edge Utility", bool, internalEdge_, true, AM_DEFAULT);
     URHO3D_ACCESSOR_ATTRIBUTE("Split Impulse", GetSplitImpulse, SetSplitImpulse, bool, false, AM_DEFAULT);
-	URHO3D_ATTRIBUTE("SoftBody World", bool, useSoftBodyWorld_, false, AM_DEFAULT);
-}
-
-void PhysicsWorld::OnSetAttribute(const AttributeInfo& attr, const Variant& src)
-{
-    Serializable::OnSetAttribute(attr, src);
-
-    if (useSoftBodyWorld_ && !softBodyWorldInfo_)
-    {
-        CreateDynaymicWorld();
-    }
-}
-
-void PhysicsWorld::CreateDynaymicWorld()
-{
-    // Delete configuration only if it was the default created by PhysicsWorld
-    if (collisionConfiguration_)
-        delete collisionConfiguration_;
-    collisionConfiguration_ = 0;
-
-    // create common classes
-    broadphase_ = new btDbvtBroadphase();
-    solver_ = new btSequentialImpulseConstraintSolver();
-
-    if (!useSoftBodyWorld_)
-    {
-        if (PhysicsWorld::config.collisionConfig_)
-            collisionConfiguration_ = PhysicsWorld::config.collisionConfig_;
-        else
-            collisionConfiguration_ = new btDefaultCollisionConfiguration();
-
-        collisionDispatcher_ = new btCollisionDispatcher(collisionConfiguration_);
-        world_ = new btDiscreteDynamicsWorld(collisionDispatcher_.Get(), broadphase_.Get(), solver_.Get(), collisionConfiguration_);
-    }
-    else
-    {
-        collisionConfiguration_ = new btSoftBodyRigidBodyCollisionConfiguration();
-        collisionDispatcher_ = new btCollisionDispatcher(collisionConfiguration_);
-        world_ = new btSoftRigidDynamicsWorld(collisionDispatcher_.Get(), broadphase_.Get(), solver_.Get(), collisionConfiguration_);
-    }
-
-    world_->setGravity(ToBtVector3(DEFAULT_GRAVITY));
-    world_->getDispatchInfo().m_useContinuous = true;
-    world_->getSolverInfo().m_splitImpulse = false; // Disable by default for performance
-    world_->setDebugDrawer(this);
-    world_->setInternalTickCallback(InternalPreTickCallback, static_cast<void*>(this), true);
-    world_->setInternalTickCallback(InternalTickCallback, static_cast<void*>(this), false);
-    world_->setSynchronizeAllMotionStates(true);
-
-    if (useSoftBodyWorld_)
-    {
-        softBodyWorldInfo_ = &((btSoftRigidDynamicsWorld*)world_.Get())->getWorldInfo();
-        softBodyWorldInfo_->m_dispatcher = collisionDispatcher_.Get();
-        softBodyWorldInfo_->m_broadphase = broadphase_.Get();
-        softBodyWorldInfo_->air_density = (btScalar)1.0;
-        softBodyWorldInfo_->water_density = 0;
-        softBodyWorldInfo_->water_offset = 0;
-        softBodyWorldInfo_->water_normal = btVector3(0, 0, 0);
-        softBodyWorldInfo_->m_gravity = world_->getGravity();
-        softBodyWorldInfo_->m_sparsesdf.Initialize();
-    }
 }
 
 bool PhysicsWorld::isVisible(const btVector3& aabbMin, const btVector3& aabbMax)
@@ -370,12 +286,6 @@ void PhysicsWorld::Update(float timeStep)
             else
                 ++i;
         }
-    }
-	
-	// SoftBody clean up
-    if (softBodyWorldInfo_)
-    {
-        softBodyWorldInfo_->m_sparsesdf.GarbageCollect();
     }
 }
 
@@ -807,16 +717,6 @@ void PhysicsWorld::RemoveRigidBody(RigidBody* body)
     delayedWorldTransforms_.Erase(body);
 }
 
-void PhysicsWorld::AddSoftBody(SoftBody* body)
-{
-    softBodies_.Push(body);
-}
-
-void PhysicsWorld::RemoveSoftBody(SoftBody* body)
-{
-    softBodies_.Remove(body);
-}
-
 void PhysicsWorld::AddCollisionShape(CollisionShape* shape)
 {
     collisionShapes_.Push(shape);
@@ -965,9 +865,8 @@ void PhysicsWorld::SendCollisionEvents()
             if (!bodyA || !bodyB)
                 continue;
 
-            // Skip collision event signaling if both objects are static, or if collision 
-            // event mode does not match but allow when two triggers collide
-            if ((bodyA->GetMass() == 0.0f && bodyB->GetMass() == 0.0f) && (!bodyA->IsTrigger() || !bodyB->IsTrigger()))
+            // Skip collision event signaling if both objects are static, or if collision event mode does not match
+            if (bodyA->GetMass() == 0.0f && bodyB->GetMass() == 0.0f)
                 continue;
             if (bodyA->GetCollisionEventMode() == COLLISION_NEVER || bodyB->GetCollisionEventMode() == COLLISION_NEVER)
                 continue;
@@ -1136,9 +1035,8 @@ void PhysicsWorld::SendCollisionEvents()
 
                 bool trigger = bodyA->IsTrigger() || bodyB->IsTrigger();
 
-                // Skip collision event signaling if both objects are static, or if collision 
-                // event mode does not match but allow when two triggers collide
-                if ((bodyA->GetMass() == 0.0f && bodyB->GetMass() == 0.0f) && (!bodyA->IsTrigger() || !bodyB->IsTrigger()))
+                // Skip collision event signaling if both objects are static, or if collision event mode does not match
+                if (bodyA->GetMass() == 0.0f && bodyB->GetMass() == 0.0f)
                     continue;
                 if (bodyA->GetCollisionEventMode() == COLLISION_NEVER || bodyB->GetCollisionEventMode() == COLLISION_NEVER)
                     continue;
@@ -1188,10 +1086,9 @@ void RegisterPhysicsLibrary(Context* context)
     CollisionShape::RegisterObject(context);
     RigidBody::RegisterObject(context);
     Constraint::RegisterObject(context);
+    Constraint6DoF::RegisterObject(context);
     PhysicsWorld::RegisterObject(context);
     RaycastVehicle::RegisterObject(context);
-	
-	 SoftBody::RegisterObject(context);
 }
 
 }
