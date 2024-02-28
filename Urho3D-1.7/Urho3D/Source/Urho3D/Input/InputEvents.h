@@ -90,6 +90,7 @@ URHO3D_EVENT(E_KEYUP, KeyUp)
 URHO3D_EVENT(E_TEXTINPUT, TextInput)
 {
     URHO3D_PARAM(P_TEXT, Text);                    // String
+	URHO3D_PARAM(P_QUALIFIERS, Qualifiers);        // int
 }
 
 /// Text editing event.
