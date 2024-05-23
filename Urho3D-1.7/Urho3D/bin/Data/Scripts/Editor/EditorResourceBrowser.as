@@ -126,6 +126,7 @@ const StringHash EXTENSION_TYPE_GLSL(".glsl");
 const StringHash EXTENSION_TYPE_FRAGMENTSHADER(".frag");
 const StringHash EXTENSION_TYPE_VERTEXSHADER(".vert");
 const StringHash EXTENSION_TYPE_HTML(".html");
+const StringHash EXTENSION_TYPE_NAVFILE(".nav");
 
 const StringHash TEXT_VAR_FILE_ID("browser_file_id");
 const StringHash TEXT_VAR_DIR_ID("browser_dir_id");
