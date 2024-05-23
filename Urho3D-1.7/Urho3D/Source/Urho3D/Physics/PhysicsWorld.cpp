@@ -31,6 +31,7 @@
 #include "../Math/Ray.h"
 #include "../Physics/CollisionShape.h"
 #include "../Physics/Constraint.h"
+#include "../Physics/Constraint6Dof.h"
 #include "../Physics/PhysicsEvents.h"
 #include "../Physics/PhysicsUtils.h"
 #include "../Physics/PhysicsWorld.h"
@@ -1188,10 +1189,10 @@ void RegisterPhysicsLibrary(Context* context)
     CollisionShape::RegisterObject(context);
     RigidBody::RegisterObject(context);
     Constraint::RegisterObject(context);
+    Constraint6DoF::RegisterObject(context);
     PhysicsWorld::RegisterObject(context);
-    RaycastVehicle::RegisterObject(context);
-	
-	 SoftBody::RegisterObject(context);
+    RaycastVehicle::RegisterObject(context);	
+    SoftBody::RegisterObject(context);
 }
 
 }
